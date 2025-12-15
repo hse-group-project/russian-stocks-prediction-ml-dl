@@ -3,13 +3,12 @@ name = "russian-stocks-prediction-ml-dl"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.11, <3.12"
 dependencies = [
     "asyncio>=4.0.0",
     "pandas>=1.5.0",
     "requests>=2.28",
     "sqlalchemy>=2.0.44",
-    "tinkoff-investments>=0.2.0b117",
     "SQLAlchemy>=1.4",
     "tpulse>=0.1.9",
     "tqdm>=4.67.1",
@@ -34,6 +33,8 @@ dependencies = [
     "xgboost>=3.1.2",
     "lightgbm>=4.6.0",
     "catboost>=1.2.8",
+    "tinkoff-invest>=0.2.0",
+    "fastapi>=0.124.4",
 ]
 
 [tool.uv.sources]
