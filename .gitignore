@@ -24,3 +24,6 @@ Thumbs.db
 
 # Модели
 catboost_info/
+
+# backup db
+/backups/
