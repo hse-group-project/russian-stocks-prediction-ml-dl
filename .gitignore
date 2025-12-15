@@ -22,5 +22,8 @@ Thumbs.db
 .env.local
 .env.production
 
+# Модели
+catboost_info/
+
 # backup db
 /backups/
