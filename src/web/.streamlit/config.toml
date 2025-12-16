@@ -1,0 +1,15 @@
+[theme]
+base = "light"
+primaryColor = "rgba(93, 89, 88, 1)"
+
+[server]
+headless = true
+runOnSave = true
+allowRunOnSave = true
+fileWatcherType = "auto"
+
+[client]
+showSidebarNavigation = true
+
+[browser]
+gatherUsageStats = false

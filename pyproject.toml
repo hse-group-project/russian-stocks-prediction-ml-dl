@@ -27,7 +27,7 @@ dependencies = [
     "stockstats>=0.6.5",
     "spacy>=3.8.11",
     "nltk>=3.9.2",
-    "ru-core-news-sm",
+    "ru_core_news_sm==3.8.0",
     "razdel>=0.5.0",
     "optuna>=4.6.0",
     "xgboost>=3.1.2",
@@ -35,12 +35,13 @@ dependencies = [
     "catboost>=1.2.8",
     "tinkoff-invest>=0.2.0",
     "fastapi>=0.124.4",
+    "streamlit>=1.52.1",
+    "uvicorn[standard]>=0.38.0",
 ]
 
 [tool.uv.sources]
 russian-stocks-prediction-ml-dl = { path = ".", editable = true }
-ru-core-news-sm = { url = "https://github.com/explosion/spacy-models/releases/download/ru_core_news_sm-3.8.0/ru_core_news_sm-3.8.0-py3-none-any.whl" }
-
+ru_core_news_sm = { url = "https://github.com/explosion/spacy-models/releases/download/ru_core_news_sm-3.8.0/ru_core_news_sm-3.8.0-py3-none-any.whl" }
 [build-system]
 requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"

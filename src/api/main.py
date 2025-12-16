@@ -1,7 +1,9 @@
 from fastapi import FastAPI
+from src.api.routes import router
+from src.api.database import Base
+from src.api.session import engine
 
-app = FastAPI()
+Base.metadata.create_all(bind=engine)
 
-@app.get("/")
-async def root():
-    return {"message": "Hello, world!"}
+app = FastAPI(title="ML Service")
+app.include_router(router)
