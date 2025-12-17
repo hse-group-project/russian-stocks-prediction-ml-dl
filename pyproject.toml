@@ -37,6 +37,7 @@ dependencies = [
     "fastapi>=0.124.4",
     "streamlit>=1.52.1",
     "uvicorn[standard]>=0.38.0",
+    "asyncpg>=0.31.0",
 ]
 
 [tool.uv.sources]
