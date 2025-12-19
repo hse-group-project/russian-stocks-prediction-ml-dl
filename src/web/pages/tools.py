@@ -56,3 +56,6 @@ if del_history_bn:
 
 if get_stats_bn:
     st.session_state.stats_data = get_stats()
+
+if st.session_state.history_data:
+    st.write(st.session_state.history_data)
