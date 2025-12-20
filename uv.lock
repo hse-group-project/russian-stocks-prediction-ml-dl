@@ -2086,6 +2086,7 @@ name = "russian-stocks-prediction-ml-dl"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "alembic" },
     { name = "asyncio" },
     { name = "asyncpg" },
     { name = "catboost" },
@@ -2123,6 +2124,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "alembic", specifier = ">=1.17.2" },
     { name = "asyncio", specifier = ">=4.0.0" },
     { name = "asyncpg", specifier = ">=0.31.0" },
     { name = "catboost", specifier = ">=1.2.8" },

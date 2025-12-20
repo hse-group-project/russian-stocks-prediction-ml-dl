@@ -17,14 +17,24 @@ def get_history():
         return []
 
 
-def delete_history():
+admin_token = st.text_input("Admin Token", type="password")
+
+
+def delete_history(admin_token: str):
     try:
-        response = requests.delete("http://localhost:8000/api/history")
+        headers = {"X-Admin-Token": admin_token}
+        response = requests.delete("http://localhost:8000/api/history", headers=headers)
         response.raise_for_status()
+        result = response.json()
+        st.success(result["message"])
         return response.json()
+    except requests.exceptions.HTTPError:
+        if response.status_code == 401:
+            st.error("Invalid or missing admin token.")
+        else:
+            st.error(f"Server error: {response.status_code} – {response.text}")
     except Exception as e:
-        st.error(f"Error fetching data: {e}")
-        return []
+        st.error(f"Request failed: {e}")
 
 
 def get_stats():
@@ -43,19 +53,33 @@ if "stats_data" not in st.session_state:
     st.session_state.stats_data = []
 
 
-get_history_bn = st.button("Get history requests")
 del_history_bn = st.button("Delete history requests")
 
+if del_history_bn:
+    delete_history(admin_token)
+
+get_history_bn = st.button("Get history requests")
 get_stats_bn = st.button("Get requests stats")
 
 if get_history_bn:
     st.session_state.history_data = get_history()
 
-if del_history_bn:
-    delete_history()
 
 if get_stats_bn:
     st.session_state.stats_data = get_stats()
 
 if st.session_state.history_data:
-    st.write(st.session_state.history_data)
+    st.divider()
+    st.markdown("#### History", text_alignment="center")
+    if "message" in st.session_state.history_data.keys():
+        st.info(st.session_state.history_data.get("message"))
+    else:
+        st.dataframe(st.session_state.history_data)
+
+if st.session_state.stats_data:
+    st.divider()
+    st.markdown("#### Stats", text_alignment="center")
+    if "message" in st.session_state.stats_data.keys():
+        st.info(st.session_state.stats_data.get("message"))
+    else:
+        st.dataframe(st.session_state.stats_data)

@@ -2,7 +2,7 @@ import streamlit as st
 import requests
 from datetime import date
 import utils.config_ml as config_ml
-from src.web.utils.utils import graphic
+from src.web.utils.utils import candle_graphic, line_graphic
 
 TICKER_DEFAULT = config_ml.TICKER
 LEFT_DATE_DEFAULT = config_ml.LEFT_DATE
@@ -57,7 +57,7 @@ def fetch_fake_predict(ticker, interval):
             "interval": interval,
         }
         response = requests.post(
-            "http://localhost:8000/api/fake_predict", json=json_params
+            "http://localhost:8000/api/test_predict", json=json_params
         )
         response.raise_for_status()
         return response.json()
@@ -105,9 +105,7 @@ if "predict_data" not in st.session_state:
 if "predict_interval" not in st.session_state:
     st.session_state.predict_interval = []
 if "companies" not in st.session_state:
-    st.session_state.companies = []
-
-st.session_state.companies = fetch_companies()
+    st.session_state.companies = fetch_companies()
 
 with st.form(key="input_form"):
     st.subheader("Fetch Candle Data")
@@ -158,7 +156,7 @@ if submit:
 if st.session_state.candles_data:
     st.divider()
     try:
-        fig = graphic(st.session_state.candles_data)
+        fig = candle_graphic(st.session_state.candles_data)
         st.markdown("#### Candlestick Chart", text_alignment="center")
         st.plotly_chart(fig, width="content")
     except Exception as e:
@@ -173,5 +171,9 @@ if st.session_state.predict_data:
 
 if st.session_state.predict_interval:
     st.divider()
-    st.markdown("#### Fake predict", text_alignment="center")
-    st.dataframe(st.session_state.predict_interval)
+    try:
+        fig = line_graphic(st.session_state.predict_interval)
+        st.markdown("#### Test predict", text_alignment="center")
+        st.plotly_chart(fig, width="content")
+    except Exception as e:
+        st.error(f"Error rendering graph: {e}")
