@@ -16,6 +16,8 @@ ADMIN_DELETE_TOKEN=
 
 2. Инициализация окружения: `uv sync`
 
-3. Запуск backend: `uv run python -m uvicorn src.api.main:app --port 8000 --reload`
+3. Включить окружение: `source .venv/bin/activate` - macos, `.venv\Scripts\activate` - windows
 
-4. Запуск frontend: `uv run streamlit run src/web/main.py`
+4. Запуск backend: `uv run python -m uvicorn src.api.main:app --port 8000 --reload`
+
+5. Запуск frontend: `uv run streamlit run src/web/main.py`
