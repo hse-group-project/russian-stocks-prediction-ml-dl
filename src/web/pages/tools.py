@@ -71,8 +71,9 @@ if get_stats_bn:
 if st.session_state.history_data:
     st.divider()
     st.markdown("#### History", text_alignment="center")
-    if "message" in st.session_state.history_data.keys():
-        st.info(st.session_state.history_data.get("message"))
+    if isinstance(st.session_state.history_data, dict):
+        if "message" in st.session_state.history_data.keys():
+            st.info(st.session_state.history_data.get("message"))
     else:
         st.dataframe(st.session_state.history_data)
 
