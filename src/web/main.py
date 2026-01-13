@@ -131,7 +131,7 @@ with st.form(key="input_form"):
     )
     metric_optuna = st.selectbox(label="metric_optuna", options=["MAPE", "MAE"])
 
-    submit = st.form_submit_button("Predict Data")
+    submit = st.form_submit_button("Fetch Data")
 
 if submit:
     left_str = left_date_input.isoformat()
