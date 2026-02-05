@@ -1,9 +1,13 @@
 import subprocess
 import sys
+from dotenv import load_dotenv
 import pandas as pd
+import os
 
 import time
 from datetime import datetime, timedelta
+
+load_dotenv()
 
 
 def install_package(package):
@@ -766,11 +770,11 @@ def show_database_stats(db_config):
 def main_complete_collection():
     # Конфигурация базы данных PostgreSQL
     DB_CONFIG = {
-        "dbname": "russian-stocks-prediction-ml-dl",
-        "user": "root",
-        "password": "groot",
-        "host": "185.70.105.233",
-        "port": "5432",
+        "dbname": os.getenv("DB_NAME"),
+        "user": os.getenv("DB_USER"),
+        "password": os.getenv("DB_PASSWORD"),
+        "host": os.getenv("DB_HOST"),
+        "port": os.getenv("DB_PORT"),
     }
 
     # ТОКЕН Tinkoff
@@ -871,11 +875,11 @@ def quick_db_stats(db_config):
 if __name__ == "__main__":
     # Конфигурация базы данных
     DB_CONFIG = {
-        "dbname": "russian-stocks-prediction-ml-dl",
-        "user": "root",
-        "password": "groot",
-        "host": "185.70.105.233",
-        "port": "5432",
+        "dbname": os.getenv("DB_NAME"),
+        "user": os.getenv("DB_USER"),
+        "password": os.getenv("DB_PASSWORD"),
+        "host": os.getenv("DB_HOST"),
+        "port": os.getenv("DB_PORT"),
     }
 
     # Основной сбор данных

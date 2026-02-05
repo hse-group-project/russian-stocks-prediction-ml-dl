@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  api:
+    image: russian-stocks-prediction-ml-dl
+    container_name: ml_api
+    command: uv run uvicorn api.api:app --host 0.0.0.0 --port 8000
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+
+  web:
+    image: russian-stocks-prediction-ml-dl
+    container_name: ml_web
+    command: uv run streamlit run web/main.py --server.port=8501 --server.address=0.0.0.0
+    env_file:
+      - .env
+    environment:
+      API_URL: http://ml_api:8000
+    ports:
+      - "8501:8501"
