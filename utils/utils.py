@@ -132,59 +132,63 @@ def data_from_tpulse(
         ORDER BY inserted ASC
     """
     t_pulse_data = pd.read_sql(query, conn, params=(ticker, left_date, right_date))
-    t_pulse_features = t_pulse_data.drop(columns=["id"]).copy()
-    t_pulse_features = t_pulse_features.rename(columns={"inserted": "dt"})
+
+    if t_pulse_data.empty:
+        return pd.DataFrame(columns=["dt", "ticker"])
+
+    t_pulse_features = t_pulse_data.drop(columns=["id"]).rename(
+        columns={"inserted": "dt"}
+    )
+
     t_pulse_features["dt"] = pd.to_datetime(
         t_pulse_features["dt"], errors="coerce"
     ).dt.date
 
-    # Обработка текста
     t_pulse_features["clean_text"] = t_pulse_features["text"].apply(clean_text)
-
     t_pulse_features["lemmas"] = lemmatize_parallel(
         t_pulse_features["clean_text"].tolist()
     )
 
-    # Формирование базовых текстовых фичей
     t_pulse_features["num_words"] = t_pulse_features["lemmas"].str.len()
     t_pulse_features["num_chars"] = t_pulse_features["clean_text"].str.len()
 
-    # Обработка реакций
-    reactions_df = t_pulse_features["reactions_counters"].apply(parse_reactions)
+    reactions_list = (
+        t_pulse_features["reactions_counters"].apply(parse_reactions).tolist()
+    )
+    reactions_df = pd.DataFrame(reactions_list, index=t_pulse_features.index)
     t_pulse_features = pd.concat([t_pulse_features, reactions_df], axis=1)
 
-    # Обработка числа комментариев
     t_pulse_features["commentscount"] = pd.to_numeric(
         t_pulse_features["commentscount"], errors="coerce"
     ).fillna(0)
-    t_pulse_features["comment_strength"] = np.log(
-        np.exp(1) + t_pulse_features["commentscount"]
-    )
+    t_pulse_features["comment_strength"] = np.log1p(t_pulse_features["commentscount"])
 
-    # Формирование фичй tf-idf по самым важным словам в постах
-    top_words_df = t_pulse_features["lemmas"].apply(top_words_stats)
+    top_words_list = t_pulse_features["lemmas"].apply(top_words_stats).tolist()
+    top_words_df = pd.DataFrame(top_words_list, index=t_pulse_features.index)
     t_pulse_features = pd.concat([t_pulse_features, top_words_df], axis=1)
-    t_pulse_features = t_pulse_features.drop(
-        columns=["text", "clean_text", "lemmas", "reactions_counters"]
-    )
 
-    # Агрегация по ранее сформированным фичам
+    cols_to_drop = ["text", "clean_text", "lemmas", "reactions_counters"]
+    existing_cols_to_drop = [c for c in cols_to_drop if c in t_pulse_features.columns]
+    t_pulse_features = t_pulse_features.drop(columns=existing_cols_to_drop)
+
     agg_cols = t_pulse_features.drop(columns=["dt", "ticker"]).columns
     t_pulse_features_gr = t_pulse_features.groupby(["dt", "ticker"], as_index=False)[
         agg_cols
     ].agg(["sum", "mean", "max"])
-    t_pulse_features_gr.columns = ["dt", "ticker"] + [
+
+    new_columns = ["dt", "ticker"] + [
         f"{col[0]}_{col[1]}" for col in t_pulse_features_gr.columns[2:]
     ]
+    t_pulse_features_gr.columns = new_columns
 
-    t_pulse_features_gr = t_pulse_features_gr.reset_index(drop=True)
-    t_pulse_features_gr = t_pulse_features_gr.drop(
-        columns=[
-            col
-            for col in t_pulse_features_gr.columns
-            if ("top_words_pct" in col and "sum" in col)
-        ]
-    )
+    cols_to_remove = [
+        col
+        for col in t_pulse_features_gr.columns
+        if ("top_words_pct" in col and "sum" in col)
+    ]
+    if cols_to_remove:
+        t_pulse_features_gr = t_pulse_features_gr.drop(columns=cols_to_remove)
+
     t_pulse_features_gr["dt"] = pd.to_datetime(t_pulse_features_gr["dt"])
 
     return t_pulse_features_gr
@@ -194,102 +198,128 @@ def data_from_tpulse(
 def data_from_macrofactors(
     ticker: str, left_date: str, right_date: str, conn
 ) -> pd.DataFrame:
-    left_date_updated = (
-        datetime.strptime(left_date, "%Y-%m-%d").date() - timedelta(days=shift_days + 1)
-    ).strftime("%Y-%m-%d")
-    days_list = [num_days for num_days in range(1, shift_days + 2)]
+    dt_left = datetime.strptime(left_date, "%Y-%m-%d").date()
+    dt_right = datetime.strptime(right_date, "%Y-%m-%d").date()
 
-    indices_data = pd.read_sql(
-        f"""
+    left_date_updated = (dt_left - timedelta(days=shift_days + 1)).strftime("%Y-%m-%d")
+    right_date_str = dt_right.strftime("%Y-%m-%d")
+
+    days_list = list(range(1, shift_days + 2))
+
+    indices_query = """
         SELECT * FROM moex_iss_indices
-        WHERE date >= '{left_date_updated}' AND date <= '{right_date}'
+        WHERE date >= %s AND date <= %s
         ORDER BY date ASC
-        """,
-        conn,
+    """
+    indices_data = pd.read_sql(
+        indices_query, conn, params=(left_date_updated, right_date_str)
     )
 
-    # Создание pivot таблиц: index_code / open -> index_code_open
-    indices_data = indices_data[indices_data["index_code"].isin(indices_list)]
-    df_pivot_open = indices_data.pivot(
-        index="date", columns="index_code", values="open"
-    )
-    df_pivot_close = indices_data.pivot(
-        index="date", columns="index_code", values="close"
-    )
-    indices_data_pivot = pd.concat(
-        [df_pivot_open.add_suffix("_open"), df_pivot_close.add_suffix("_close")], axis=1
-    )
-    indices_data_pivot = indices_data_pivot.reset_index()
-    indices_data_pivot = indices_data_pivot.rename(columns={"date": "dt"})
+    if not indices_data.empty:
+        indices_data = indices_data[indices_data["index_code"].isin(indices_list)]
+        if not indices_data.empty:
+            df_pivot_open = indices_data.pivot(
+                index="date", columns="index_code", values="open"
+            )
+            df_pivot_close = indices_data.pivot(
+                index="date", columns="index_code", values="close"
+            )
 
-    dividends_data = pd.read_sql(
-        f"""
+            indices_data_pivot = (
+                pd.concat(
+                    [
+                        df_pivot_open.add_suffix("_open"),
+                        df_pivot_close.add_suffix("_close"),
+                    ],
+                    axis=1,
+                )
+                .reset_index()
+                .rename(columns={"date": "dt"})
+            )
+        else:
+            indices_data_pivot = pd.DataFrame(columns=["dt"])
+    else:
+        indices_data_pivot = pd.DataFrame(columns=["dt"])
+
+    div_query = """
         SELECT date, ticker, dividedends_rub_per_share as dividends_rub_per_share
         FROM moex_iss_dividends
-        WHERE ticker = '{ticker}'
-        """,
-        conn,
-    )
+        WHERE ticker = %s
+    """
+    dividends_data = pd.read_sql(div_query, conn, params=(ticker,))
 
-    dividends_data["date"] = pd.to_datetime(dividends_data["date"])
+    if not dividends_data.empty:
+        dividends_data["date"] = pd.to_datetime(dividends_data["date"])
+        dividends_data = dividends_data.sort_values("date")
 
-    # Формирование датафрейма с заполненными по дате дивидендами
-    date_range = pd.date_range(
-        start=datetime.strptime(left_date_updated, "%Y-%m-%d").date(),
-        end=datetime.strptime(right_date, "%Y-%m-%d").date(),
-    )
+        date_range = pd.date_range(start=left_date_updated, end=right_date_str)
+        dividends_data_full = pd.DataFrame({"dt": date_range})
+        dividends_data_full["ticker"] = ticker
 
-    dividends_data_full = pd.DataFrame({"dt": date_range})
-    dividends_data_full["ticker"] = ticker
-    dividends_data = dividends_data.sort_values("date")
-    dividends_data_full["dividends_rub_per_share"] = dividends_data_full["dt"].apply(
-        lambda x: dividends_data[dividends_data["date"] <= x][
+        dividends_data_full = dividends_data_full.merge(
+            dividends_data, how="left", left_on="dt", right_on="date"
+        )
+        dividends_data_full["dividends_rub_per_share"] = dividends_data_full[
             "dividends_rub_per_share"
-        ].iloc[-1]
-    )
+        ].ffill()
+        dividends_data_full = dividends_data_full.drop(
+            columns=["date"], errors="ignore"
+        )
+    else:
+        date_range = pd.date_range(start=left_date_updated, end=right_date_str)
+        dividends_data_full = pd.DataFrame(
+            {"dt": date_range, "ticker": ticker, "dividends_rub_per_share": np.nan}
+        )
 
+    cbrf_query = """
+        SELECT * FROM cbrf_data
+        WHERE date >= %s AND date <= %s
+    """
+    min_date_cbrf = datetime.strptime(left_date_updated, "%Y-%m-%d").date() - timedelta(
+        days=30
+    )
     cbrf_data = pd.read_sql(
-        """
-        SELECT *
-        FROM cbrf_data
-        """,
-        conn,
+        cbrf_query, conn, params=(min_date_cbrf.strftime("%Y-%m-%d"), right_date_str)
     )
 
-    # Формирование датафрейма с заполненными по дате макрофакторами из ЦБ РФ
-    date_range_cbrf = pd.date_range(
-        start=min(cbrf_data["date"]),
-        end=datetime.strptime(right_date, "%Y-%m-%d").date(),
-    )
+    if not cbrf_data.empty:
+        cbrf_data = cbrf_data.rename(columns={"date": "dt"})
+        date_range_cbrf = pd.date_range(start=min_date_cbrf, end=dt_right)
+        cbrf_data_full = pd.DataFrame({"dt": date_range_cbrf}).merge(
+            cbrf_data, how="left", on="dt"
+        )
+        cbrf_data_full = cbrf_data_full.sort_values("dt").ffill()
+        cbrf_data_full = cbrf_data_full[
+            (cbrf_data_full["dt"] >= left_date_updated)
+            & (cbrf_data_full["dt"] <= right_date_str)
+        ]
+    else:
+        date_range_cbrf = pd.date_range(start=left_date_updated, end=right_date_str)
+        cbrf_data_full = pd.DataFrame({"dt": date_range_cbrf})
 
-    cbrf_data_full = pd.DataFrame({"dt": date_range_cbrf})
-    cbrf_data = cbrf_data.rename(columns={"date": "dt"})
-    cbrf_data_full = cbrf_data_full.merge(cbrf_data, how="left", on="dt")
-    cbrf_data_full = cbrf_data_full.sort_values("dt")
-    cbrf_data_full = cbrf_data_full.ffill()
-    cbrf_data_full = cbrf_data_full[
-        (cbrf_data_full["dt"] >= left_date_updated)
-        & (cbrf_data_full["dt"] <= right_date)
-    ]
+    if not indices_data_pivot.empty:
+        indices_data_pivot["dt"] = pd.to_datetime(indices_data_pivot["dt"])
+    dividends_data_full["dt"] = pd.to_datetime(dividends_data_full["dt"])
+    cbrf_data_full["dt"] = pd.to_datetime(cbrf_data_full["dt"])
 
-    # Соединяем датафреймы-источники: дивиденды, индексы и макрофакторы из ЦБ
     result_df = indices_data_pivot.merge(
         dividends_data_full, how="left", on="dt"
     ).merge(cbrf_data_full, how="left", on="dt")
-    for col in result_df.columns:
-        if col not in ["ticker", "dt"]:
-            for num_days in days_list:
-                # Лаги
-                result_df[f"{col}_lag_{num_days}"] = result_df[col].shift(num_days)
-                # CС
-                result_df[f"{col}_rm_{num_days}"] = (
-                    result_df[col].rolling(num_days).mean()
-                )
+
+    calc_cols = [col for col in result_df.columns if col not in ["ticker", "dt"]]
+
+    for col in calc_cols:
+        for num_days in days_list:
+            result_df[f"{col}_lag_{num_days}"] = result_df[col].shift(num_days)
+            result_df[f"{col}_rm_{num_days}"] = result_df[col].rolling(num_days).mean()
+
     col_to_drop = [col for col in result_df.columns if col.endswith("rm_1")]
-    result_df = result_df.drop(columns=col_to_drop)
+    if col_to_drop:
+        result_df = result_df.drop(columns=col_to_drop)
+
     result_df = result_df[
         (result_df["dt"] >= left_date) & (result_df["dt"] <= right_date)
-    ]
+    ].reset_index(drop=True)
 
     return result_df
 
@@ -298,111 +328,100 @@ def data_from_macrofactors(
 def data_from_ticker(
     ticker: str, left_date: str, right_date: str, conn
 ) -> pd.DataFrame:
-    left_date_updated = (
-        datetime.strptime(left_date, "%Y-%m-%d").date() - timedelta(days=shift_days + 1)
-    ).strftime("%Y-%m-%d")
-    days_list = [num_days for num_days in range(1, shift_days + 2)]
-    shares = pd.read_sql(
-        f"""
+    dt_left = datetime.strptime(left_date, "%Y-%m-%d").date()
+    dt_right = datetime.strptime(right_date, "%Y-%m-%d").date()
+    left_date_updated = (dt_left - timedelta(days=shift_days + 1)).strftime("%Y-%m-%d")
+    right_date_str = dt_right.strftime("%Y-%m-%d")
+
+    days_list = list(range(1, shift_days + 2))
+    max_shift = max(days_list)
+
+    query = """
         SELECT * FROM candles
-        WHERE ticker = '{ticker}'
-        AND datetime >= '{left_date_updated}' AND datetime <= '{right_date}'
+        WHERE ticker = %s
+        AND datetime >= %s AND datetime <= %s
         ORDER BY datetime ASC
-    """,
-        conn,
+    """
+    shares = pd.read_sql(
+        query, conn, params=(ticker, left_date_updated, right_date_str)
     )
+
+    if shares.empty:
+        return pd.DataFrame()
 
     shares = shares.drop_duplicates()
     shares_features = shares[
         ["datetime", "ticker", "open", "close", "high", "low", "volume"]
-    ].copy()
-    shares_features = shares_features.rename(columns={"datetime": "dt"})
+    ].rename(columns={"datetime": "dt"})
 
-    # Лаги и скользящее среднее
-    for col in shares_features.columns:
-        if col not in ["ticker", "dt", "close"]:
-            for num_days in days_list:
-                # Лаги
-                shares_features[f"{col}_lag_{num_days}"] = shares_features[col].shift(
-                    num_days
-                )
-                # CС
-                shares_features[f"{col}_rm_{num_days}"] = (
-                    shares_features[col].rolling(num_days).mean()
-                )
-        elif col == "close":
-            shares_features[f"{col}_lag_{max(days_list)}"] = shares_features[col].shift(
-                max(days_list)
+    numeric_cols = [
+        col for col in shares_features.columns if col not in ["ticker", "dt", "close"]
+    ]
+
+    for col in numeric_cols:
+        for num_days in days_list:
+            shares_features[f"{col}_lag_{num_days}"] = shares_features[col].shift(
+                num_days
             )
+            shares_features[f"{col}_rm_{num_days}"] = (
+                shares_features[col].rolling(num_days).mean()
+            )
+
+    shares_features[f"close_lag_{max_shift}"] = shares_features["close"].shift(
+        max_shift
+    )
 
     for num_days in days_list:
-        # Доп фичи на основании лагов
-        shares_features[f"high_lag_{num_days}_low_lag_{num_days}_diff"] = (
-            shares_features[f"high_lag_{num_days}"]
-            - shares_features[f"low_lag_{num_days}"]
-        )
-        shares_features[f"high_lag_{num_days}_low_lag_{num_days}_diff_pct"] = round(
-            100
-            * (
-                shares_features[f"high_lag_{num_days}"]
-                - shares_features[f"low_lag_{num_days}"]
-            )
-            / shares_features[f"low_lag_{num_days}"],
-            3,
+        h_lag = shares_features[f"high_lag_{num_days}"]
+        l_lag = shares_features[f"low_lag_{num_days}"]
+
+        diff = h_lag - l_lag
+        shares_features[f"high_lag_{num_days}_low_lag_{num_days}_diff"] = diff
+        shares_features[f"high_lag_{num_days}_low_lag_{num_days}_diff_pct"] = np.round(
+            100 * diff / l_lag.replace(0, np.nan), 3
         )
 
-    # Аналогичные расчеты для актуальных свечей только БЕЗ close
-    shares_features["high_low_diff"] = shares_features["high"] - shares_features["low"]
-    shares_features["high_low_diff_pct"] = round(
-        100
-        * (shares_features["high"] - shares_features["low"])
-        / shares_features["low"],
-        3,
+    h_curr = shares_features["high"]
+    l_curr = shares_features["low"]
+    diff_curr = h_curr - l_curr
+    shares_features["high_low_diff"] = diff_curr
+    shares_features["high_low_diff_pct"] = np.round(
+        100 * diff_curr / l_curr.replace(0, np.nan), 3
     )
 
-    # На основе фичей с шагом max(days_list) назад создаем свечи:
-    shares_features[f"open_lag_{max(days_list)}_close_lag_{max(days_list)}_diff"] = (
-        shares_features[f"close_lag_{max(days_list)}"]
-        - shares_features[f"open_lag_{max(days_list)}"]
-    )
-    shares_features[
-        f"open_lag_{max(days_list)}_close_lag_{max(days_list)}_diff_pct"
-    ] = round(
-        100
-        * (
-            shares_features[f"close_lag_{max(days_list)}"]
-            - shares_features[f"open_lag_{max(days_list)}"]
-        )
-        / shares_features[f"open_lag_{max(days_list)}"],
-        3,
+    o_lag = shares_features[f"open_lag_{max_shift}"]
+    c_lag = shares_features[f"close_lag_{max_shift}"]
+    diff_oc = c_lag - o_lag
+    shares_features[f"open_lag_{max_shift}_close_lag_{max_shift}_diff"] = diff_oc
+    shares_features[f"open_lag_{max_shift}_close_lag_{max_shift}_diff_pct"] = np.round(
+        100 * diff_oc / o_lag.replace(0, np.nan), 3
     )
 
-    # Формирование индикаторов (строятся на сегодня -> отбираем с лагом shift_days назад)
-    stock = StockDataFrame.retype(shares_features)
-    shares_features[f"macd_lag_{max(days_list)}"] = round(
-        stock["macd"].shift(max(days_list)), 3
-    )
-    shares_features[f"rsi_14_lag_{max(days_list)}"] = round(
-        stock["rsi_14"].shift(max(days_list)), 3
-    )
-    shares_features[f"boll_ub_lag_{max(days_list)}"] = round(
-        stock["boll_ub"].shift(max(days_list)), 3
-    )
-    shares_features[f"boll_lb_lag_{max(days_list)}"] = round(
-        stock["boll_lb"].shift(max(days_list)), 3
+    stock = StockDataFrame.retype(
+        shares_features[["open", "high", "low", "close", "volume"]]
     )
 
-    # Формирование таргета
+    shares_features[f"macd_lag_{max_shift}"] = np.round(
+        stock["macd"].shift(max_shift), 3
+    )
+    shares_features[f"rsi_14_lag_{max_shift}"] = np.round(
+        stock["rsi_14"].shift(max_shift), 3
+    )
+    shares_features[f"boll_ub_lag_{max_shift}"] = np.round(
+        stock["boll_ub"].shift(max_shift), 3
+    )
+    shares_features[f"boll_lb_lag_{max_shift}"] = np.round(
+        stock["boll_lb"].shift(max_shift), 3
+    )
+
     shares_features["target"] = shares_features["close"]
     col_to_drop = [col for col in shares_features.columns if col.endswith("rm_1")]
     shares_features = shares_features.drop(columns=["close"] + col_to_drop)
 
-    for col in shares_features.columns:
-        shares_features[col] = shares_features[col].ffill()
+    shares_features = shares_features.ffill()
 
     shares_features = shares_features[
         (shares_features["dt"] >= left_date) & (shares_features["dt"] <= right_date)
-    ]
-    shares_features = shares_features.reset_index(drop=True)  # .dropna()
+    ].reset_index(drop=True)
 
     return shares_features
