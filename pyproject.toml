@@ -40,6 +40,8 @@ dependencies = [
     "asyncpg>=0.31.0",
     "swifter>=1.4.0",
     "alembic>=1.17.2",
+    "gc-python-utils>=0.0.1",
+    "shap>=0.51.0",
 ]
 
 [tool.uv.sources]

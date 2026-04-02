@@ -139,7 +139,6 @@ def data_from_tpulse(
     t_pulse_features = t_pulse_data.drop(columns=["id"]).rename(
         columns={"inserted": "dt"}
     )
-
     t_pulse_features["dt"] = pd.to_datetime(
         t_pulse_features["dt"], errors="coerce"
     ).dt.date
@@ -152,43 +151,40 @@ def data_from_tpulse(
     t_pulse_features["num_words"] = t_pulse_features["lemmas"].str.len()
     t_pulse_features["num_chars"] = t_pulse_features["clean_text"].str.len()
 
-    reactions_list = (
-        t_pulse_features["reactions_counters"].apply(parse_reactions).tolist()
-    )
-    reactions_df = pd.DataFrame(reactions_list, index=t_pulse_features.index)
+    reactions_df = t_pulse_features["reactions_counters"].apply(parse_reactions)
     t_pulse_features = pd.concat([t_pulse_features, reactions_df], axis=1)
 
     t_pulse_features["commentscount"] = pd.to_numeric(
         t_pulse_features["commentscount"], errors="coerce"
     ).fillna(0)
-    t_pulse_features["comment_strength"] = np.log1p(t_pulse_features["commentscount"])
+    t_pulse_features["comment_strength"] = np.log(
+        np.exp(1) + t_pulse_features["commentscount"]
+    )
 
-    top_words_list = t_pulse_features["lemmas"].apply(top_words_stats).tolist()
-    top_words_df = pd.DataFrame(top_words_list, index=t_pulse_features.index)
+    top_words_df = t_pulse_features["lemmas"].apply(top_words_stats)
     t_pulse_features = pd.concat([t_pulse_features, top_words_df], axis=1)
 
-    cols_to_drop = ["text", "clean_text", "lemmas", "reactions_counters"]
-    existing_cols_to_drop = [c for c in cols_to_drop if c in t_pulse_features.columns]
-    t_pulse_features = t_pulse_features.drop(columns=existing_cols_to_drop)
+    t_pulse_features = t_pulse_features.drop(
+        columns=["text", "clean_text", "lemmas", "reactions_counters"]
+    )
 
     agg_cols = t_pulse_features.drop(columns=["dt", "ticker"]).columns
     t_pulse_features_gr = t_pulse_features.groupby(["dt", "ticker"], as_index=False)[
         agg_cols
     ].agg(["sum", "mean", "max"])
 
-    new_columns = ["dt", "ticker"] + [
+    t_pulse_features_gr.columns = ["dt", "ticker"] + [
         f"{col[0]}_{col[1]}" for col in t_pulse_features_gr.columns[2:]
     ]
-    t_pulse_features_gr.columns = new_columns
 
-    cols_to_remove = [
-        col
-        for col in t_pulse_features_gr.columns
-        if ("top_words_pct" in col and "sum" in col)
-    ]
-    if cols_to_remove:
-        t_pulse_features_gr = t_pulse_features_gr.drop(columns=cols_to_remove)
-
+    t_pulse_features_gr = t_pulse_features_gr.reset_index(drop=True)
+    t_pulse_features_gr = t_pulse_features_gr.drop(
+        columns=[
+            col
+            for col in t_pulse_features_gr.columns
+            if ("top_words_pct" in col and "sum" in col)
+        ]
+    )
     t_pulse_features_gr["dt"] = pd.to_datetime(t_pulse_features_gr["dt"])
 
     return t_pulse_features_gr
@@ -306,7 +302,10 @@ def data_from_macrofactors(
         dividends_data_full, how="left", on="dt"
     ).merge(cbrf_data_full, how="left", on="dt")
 
-    calc_cols = [col for col in result_df.columns if col not in ["ticker", "dt"]]
+    result_df["ticker"] = ticker
+
+    numeric_cols = result_df.select_dtypes(include=[np.number]).columns.tolist()
+    calc_cols = [col for col in numeric_cols if col not in ["dt"]]
 
     for col in calc_cols:
         for num_days in days_list:
