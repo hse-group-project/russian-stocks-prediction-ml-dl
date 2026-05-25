@@ -27,3 +27,6 @@ catboost_info/
 
 # backup db
 /backups/
+
+# Другое
+all_features/
