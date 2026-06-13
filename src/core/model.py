@@ -44,7 +44,7 @@ def pack_all_data_for_ml_models(ticker: str, left_date: str, right_date: str, co
     return data
 
 
-def sliding_windows_cross_validatin(df, train_days, val_days, test_days, step):
+def sliding_windows_cross_validating(df, train_days, val_days, test_days, step):
     windows = []
     n = len(df)
     current_test_end = n
@@ -275,7 +275,7 @@ def resulting(
     df = data.copy()
     df = df[~df["target"].isnull()]
 
-    windows = sliding_windows_cross_validatin(
+    windows = sliding_windows_cross_validating(
         df, train_period, val_period, test_period, step
     )
 
